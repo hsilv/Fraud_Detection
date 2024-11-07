@@ -60,8 +60,8 @@ data = filtered_cc_frequency_df
 
 # Gráfico con Altair
 chart = alt.Chart(data).mark_bar(color='skyblue', stroke='black').encode(
-    x='cc_num',
-    y='frequency'
+    x=alt.X('cc_num', title='Número de Tarjeta de Crédito'),
+    y=alt.Y('frequency', title='Cantidad de Transacciones')
 ).properties(
     width=600,
     height=400,
