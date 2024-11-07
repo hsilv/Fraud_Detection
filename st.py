@@ -59,13 +59,126 @@ filtered_cc_frequency_df = cc_frequency_df[cc_frequency_df['cc_num'].astype(floa
 data = filtered_cc_frequency_df
 
 # Gráfico con Altair
-chart = alt.Chart(data).mark_bar(color='skyblue', stroke='black').encode(
+chart = alt.Chart(data).mark_bar(color='skyblue', size=1).encode(
     x=alt.X('cc_num', title='Número de Tarjeta de Crédito'),
     y=alt.Y('frequency', title='Cantidad de Transacciones')
 ).properties(
     width=600,
     height=400,
     title='Cantidad de Transacciones por Tarjeta de Crédito'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+
+# Mostrar gráfico en Streamlit
+st.altair_chart(chart, use_container_width=True)
+
+cc_frequency_df = df['cc_num'].value_counts().reset_index()
+cc_frequency_df.columns = ['cc_num', 'frequency']
+filtered_cc_frequency_df = cc_frequency_df[cc_frequency_df['cc_num'].astype(float) > 1*10**18]
+data = filtered_cc_frequency_df
+
+# Gráfico con Altair
+chart = alt.Chart(data).mark_bar(color='skyblue', size=1).encode(
+    x=alt.X('cc_num', title='Número de Tarjeta de Crédito'),
+    y=alt.Y('frequency', title='Cantidad de Transacciones')
+).properties(
+    width=600,
+    height=400,
+    title='Cantidad de Transacciones por Tarjeta de Crédito'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+
+# Mostrar gráfico en Streamlit
+st.altair_chart(chart, use_container_width=True)
+
+fraud_transactions = df[df['is_fraud'] == 1]
+
+# Contar la cantidad de transacciones fraudulentas por tarjeta
+fraud_count_by_card = fraud_transactions['cc_num'].value_counts().reset_index()
+fraud_count_by_card.columns = ['cc_num', 'frequency']
+fraud_count_by_card = fraud_count_by_card[fraud_count_by_card['cc_num'].astype(float) < 1*10**18]
+data = fraud_count_by_card
+
+# Gráfico con Altair
+chart = alt.Chart(data).mark_bar(color='skyblue', size=1).encode(
+    x=alt.X('cc_num', title='Número de Tarjeta de Crédito'),
+    y=alt.Y('frequency', title='Cantidad de Transacciones Fraudulentas')
+).properties(
+    width=600,
+    height=400,
+    title='Cantidad de Transacciones Fraudulentas por Tarjeta de Crédito'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+
+# Mostrar gráfico en Streamlit
+st.altair_chart(chart, use_container_width=True)
+
+
+fraud_transactions = df[df['is_fraud'] == 1]
+
+# Contar la cantidad de transacciones fraudulentas por tarjeta
+fraud_count_by_card = fraud_transactions['cc_num'].value_counts().reset_index()
+fraud_count_by_card.columns = ['cc_num', 'frequency']
+fraud_count_by_card = fraud_count_by_card[fraud_count_by_card['cc_num'].astype(float) > 1*10**18]
+data = fraud_count_by_card
+
+# Gráfico con Altair
+chart = alt.Chart(data).mark_bar(color='skyblue', size=1).encode(
+    x=alt.X('cc_num', title='Número de Tarjeta de Crédito'),
+    y=alt.Y('frequency', title='Cantidad de Transacciones Fraudulentas')
+).properties(
+    width=600,
+    height=400,
+    title='Cantidad de Transacciones Fraudulentas por Tarjeta de Crédito'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+
+# Mostrar gráfico en Streamlit
+st.altair_chart(chart, use_container_width=True)
+
+df=df.drop('cc_num',axis=1)
+df=df.drop('first',axis=1)
+df=df.drop('last',axis=1)
+df=df.drop('street',axis=1)
+df=df.drop('city',axis=1)
+df=df.drop('zip',axis=1)
+
+st.divider()
+st.subheader("Cantidad de Fraudes por Mes")
+
+# cantidad de fraudes por mes
+fraud_df = df[df['is_fraud'] == 1]
+
+# Agrupar por mes para contar los fraudes por mes
+fraud_df['month'] = fraud_df['trans_date_trans_time'].dt.to_period('M')
+fraud_count_by_month = fraud_df.groupby('month').size().reset_index(name='frequency')
+
+# Convertir la columna 'month' a cadena de texto
+fraud_count_by_month['month'] = fraud_count_by_month['month'].astype(str)
+
+# Gráfico con Altair
+chart = alt.Chart(fraud_count_by_month).mark_bar(color='skyblue', size=15).encode(
+    x=alt.X('month', title='Mes', axis=alt.Axis(labelAngle=-45)),
+    y=alt.Y('frequency', title='Cantidad de Fraudes')
+).properties(
+    width=600,
+    height=400,
 ).configure_axis(
     labelFontSize=12,
     titleFontSize=14
