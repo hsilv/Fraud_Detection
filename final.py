@@ -12,6 +12,7 @@ from sklearn.utils import resample
 from pycaret.classification import *
 import warnings
 from sklearn.preprocessing import LabelEncoder,StandardScaler
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
@@ -154,6 +155,90 @@ combined_chart = alt.layer(roc_curve_chart, diagonal).properties(
     width=600,
     height=400,
     title=f'Curva ROC - Regresión Logística (AUC = {roc_auc_lr:.2f})'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+
+# Mostrar la curva ROC en Streamlit
+st.altair_chart(combined_chart, use_container_width=True)
+
+st.divider()
+st.subheader('Random Forest')
+rf_model = RandomForestClassifier(n_estimators=200, random_state=42)
+
+
+rf_model.fit(X_train, y_train)
+
+
+y_pred_rf = rf_model.predict(X_test)
+y_proba_rf = rf_model.predict_proba(X_test)[:, 1]
+
+report = classification_report(y_test, y_pred_rf, output_dict=True)
+report_df = pd.DataFrame(report).transpose()
+st.dataframe(report_df)
+
+# Calcular la matriz de confusión
+cm_lr = confusion_matrix(y_test, y_pred_rf)
+
+# Convertir la matriz de confusión en un DataFrame
+cm_df = pd.DataFrame(cm_lr, index=['No Fraude', 'Fraude'], columns=['Predicción No Fraude', 'Predicción Fraude'])
+
+# Convertir el DataFrame en un formato largo para Altair
+cm_df = cm_df.reset_index().melt(id_vars='index')
+cm_df.columns = ['Real', 'Predicción', 'Valor']
+
+# Crear el heatmap con Altair
+heatmap = alt.Chart(cm_df).mark_rect().encode(
+    x='Predicción:O',
+    y='Real:O',
+    color=alt.Color('Valor:Q', scale=alt.Scale(scheme='blues', reverse=True)),
+    tooltip=['Real', 'Predicción', 'Valor']
+).properties(
+    width=400,
+    height=300,
+    title='Matriz de Confusión - Random Forest'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+
+# Mostrar el heatmap en Streamlit
+st.altair_chart(heatmap, use_container_width=True)
+
+# Calcular la curva ROC
+roc_auc_rf = roc_auc_score(y_test, y_proba_rf)
+fpr_rf, tpr_rf, thresholds_rf = roc_curve(y_test, y_proba_rf)
+
+# Crear un DataFrame con los valores de la curva ROC
+roc_df = pd.DataFrame({
+    'FPR': fpr_rf,
+    'TPR': tpr_rf,
+    'Thresholds': thresholds_rf
+})
+
+# Crear la curva ROC con Altair
+roc_curve_chart = alt.Chart(roc_df).mark_line().encode(
+    x=alt.X('FPR', title='Falsos positivos'),
+    y=alt.Y('TPR', title='Verdaderos positivos'),
+    tooltip=['FPR', 'TPR', 'Thresholds']
+)
+
+# Crear la línea diagonal punteada
+diagonal = alt.Chart(pd.DataFrame({'FPR': [0, 1], 'TPR': [0, 1]})).mark_line(strokeDash=[5, 5], color='gray').encode(
+    x='FPR',
+    y='TPR'
+)
+
+# Combinar la curva ROC y la línea diagonal
+combined_chart = alt.layer(roc_curve_chart, diagonal).properties(
+    width=600,
+    height=400,
+    title=f'Curva ROC - Random Forest (AUC = {roc_auc_rf:.2f})'
 ).configure_axis(
     labelFontSize=12,
     titleFontSize=14
