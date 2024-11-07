@@ -6,3 +6,5 @@ kagglehub
 pycaret[full]
 xgboost
 streamlit
+scikit-learn
+joblib
