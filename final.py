@@ -12,8 +12,9 @@ from sklearn.utils import resample
 from pycaret.classification import *
 import warnings
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
+from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, IsolationForest
 from sklearn.linear_model import LogisticRegression
+from sklearn.svm import OneClassSVM
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
@@ -88,7 +89,11 @@ def train_models(X_train, y_train):
     lgbm_model.fit(X_train, y_train)
     extra_trees_model = ExtraTreesClassifier(random_state=42, min_samples_leaf=2, min_samples_split=2, class_weight="balanced")
     extra_trees_model.fit(X_train, y_train)
-    return lr_model, rf_model, xgb_model, lgbm_model, extra_trees_model
+    iso_forest = IsolationForest(n_estimators=300, contamination='auto', random_state=42)
+    iso_forest.fit(X_train)
+    oc_svm = OneClassSVM(kernel='rbf', gamma='scale', nu=0.7)
+    oc_svm.fit(X_train)
+    return lr_model, rf_model, xgb_model, lgbm_model, extra_trees_model, iso_forest, oc_svm
 
 # Cargar y preparar los datos
 data = load_data()
@@ -98,7 +103,7 @@ X, y = prepare_data(data)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
 # Entrenar los modelos
-lr_model, rf_model, xgb_model, lgbm_model, extra_trees_model = train_models(X_train, y_train)
+lr_model, rf_model, xgb_model, lgbm_model, extra_trees_model, iso_forest, oc_svm = train_models(X_train, y_train)
 
 # Realizar predicciones y calcular métricas para el modelo de regresión logística
 y_pred_lr = lr_model.predict(X_test)
@@ -145,6 +150,24 @@ roc_auc_extra = roc_auc_score(y_test, y_proba_extra)
 fpr_extra, tpr_extra, thresholds_extra = roc_curve(y_test, y_proba_extra)
 report_extra = classification_report(y_test, extra_trees_predictions, output_dict=True)
 report_df_extra = pd.DataFrame(report_extra).transpose()
+
+# Realizar predicciones y calcular métricas para Isolation Forest
+y_pred_iso = iso_forest.predict(X_test)
+y_pred_iso = [1 if x == -1 else 0 for x in y_pred_iso]
+cm_iso = confusion_matrix(y_test, y_pred_iso)
+roc_auc_iso = roc_auc_score(y_test, y_pred_iso)
+fpr_iso, tpr_iso, thresholds_iso = roc_curve(y_test, y_pred_iso)
+report_iso = classification_report(y_test, y_pred_iso, output_dict=True)
+report_df_iso = pd.DataFrame(report_iso).transpose()
+
+# Realizar predicciones y calcular métricas para One-Class SVM
+y_pred_svm = oc_svm.predict(X_test)
+y_pred_svm = [1 if x == -1 else 0 for x in y_pred_svm]
+cm_svm = confusion_matrix(y_test, y_pred_svm)
+roc_auc_svm = roc_auc_score(y_test, y_pred_svm)
+fpr_svm, tpr_svm, thresholds_svm = roc_curve(y_test, y_pred_svm)
+report_svm = classification_report(y_test, y_pred_svm, output_dict=True)
+report_df_svm = pd.DataFrame(report_svm).transpose()
 
 
 # Crear gráficos para la regresión logística
@@ -359,9 +382,87 @@ feature_importances_df_extra = feature_importances_extra.reset_index()
 feature_importances_df_extra.columns = ['Feature', 'Importance']
 feature_importances_df_extra = feature_importances_df_extra.sort_values(by='Importance', ascending=False)
 
+# Crear gráficos para Isolation Forest
+cm_df_iso = pd.DataFrame(cm_iso, index=['No Fraude', 'Fraude'], columns=['No Fraude', 'Fraude']).reset_index().melt(id_vars='index')
+cm_df_iso.columns = ['Real', 'Predicción', 'Valor']
+heatmap_iso = alt.Chart(cm_df_iso).mark_rect().encode(
+    x='Predicción:O',
+    y='Real:O',
+    color=alt.Color('Valor:Q', scale=alt.Scale(scheme='blues', reverse=True)),
+    tooltip=['Real', 'Predicción', 'Valor']
+).properties(
+    width=400,
+    height=300,
+    title='Matriz de Confusión - Isolation Forest'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+roc_df_iso = pd.DataFrame({'FPR': fpr_iso, 'TPR': tpr_iso, 'Thresholds': thresholds_iso})
+roc_curve_chart_iso = alt.Chart(roc_df_iso).mark_line().encode(
+    x=alt.X('FPR', title='Falsos positivos'),
+    y=alt.Y('TPR', title='Verdaderos positivos'),
+    tooltip=['FPR', 'TPR', 'Thresholds']
+)
+diagonal_iso = alt.Chart(pd.DataFrame({'FPR': [0, 1], 'TPR': [0, 1]})).mark_line(strokeDash=[5, 5], color='gray').encode(
+    x='FPR',
+    y='TPR'
+)
+combined_chart_iso = alt.layer(roc_curve_chart_iso, diagonal_iso).properties(
+    width=600,
+    height=400,
+    title=f'Curva ROC - Isolation Forest (AUC = {roc_auc_iso:.2f})'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+
+# Crear gráficos para One-Class SVM
+cm_df_svm = pd.DataFrame(cm_svm, index=['No Fraude', 'Fraude'], columns=['No Fraude', 'Fraude']).reset_index().melt(id_vars='index')
+cm_df_svm.columns = ['Real', 'Predicción', 'Valor']
+heatmap_svm = alt.Chart(cm_df_svm).mark_rect().encode(
+    x='Predicción:O',
+    y='Real:O',
+    color=alt.Color('Valor:Q', scale=alt.Scale(scheme='blues', reverse=True)),
+    tooltip=['Real', 'Predicción', 'Valor']
+).properties(
+    width=400,
+    height=300,
+    title='Matriz de Confusión - One-Class SVM'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+roc_df_svm = pd.DataFrame({'FPR': fpr_svm, 'TPR': tpr_svm, 'Thresholds': thresholds_svm})
+roc_curve_chart_svm = alt.Chart(roc_df_svm).mark_line().encode(
+    x=alt.X('FPR', title='Falsos positivos'),
+    y=alt.Y('TPR', title='Verdaderos positivos'),
+    tooltip=['FPR', 'TPR', 'Thresholds']
+)
+diagonal_svm = alt.Chart(pd.DataFrame({'FPR': [0, 1], 'TPR': [0, 1]})).mark_line(strokeDash=[5, 5], color='gray').encode(
+    x='FPR',
+    y='TPR'
+)
+combined_chart_svm = alt.layer(roc_curve_chart_svm, diagonal_svm).properties(
+    width=600,
+    height=400,
+    title=f'Curva ROC - One-Class SVM (AUC = {roc_auc_svm:.2f})'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+
 
 # Sidebar para seleccionar el modelo
-model_choice = st.sidebar.selectbox("Selecciona el modelo", ["Regresión Logística", "Random Forest", "XGBoost", "LightGBM", "ExtraTrees"])
+model_choice = st.sidebar.selectbox("Selecciona el modelo", ["Regresión Logística", "Random Forest", "XGBoost", "LightGBM", "ExtraTrees", "Isolation Forest", "One-Class SVM"])
 
 # Mostrar las gráficas según el modelo seleccionado
 if model_choice == "Regresión Logística":
@@ -418,3 +519,45 @@ elif model_choice == "ExtraTrees":
         with col3:
             st.altair_chart(combined_chart_extra, use_container_width=True)
     st.bar_chart(feature_importances_df_extra.set_index('Feature'))
+elif model_choice == "Isolation Forest":
+    st.subheader('Isolation Forest')
+    with st.container():
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.dataframe(report_df_iso)
+        with col2:
+            st.altair_chart(heatmap_iso, use_container_width=True)
+        with col3:
+            st.altair_chart(combined_chart_iso, use_container_width=True)
+elif model_choice == "One-Class SVM":
+    st.subheader('One-Class SVM')
+    with st.container():
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.dataframe(report_df_svm)
+        with col2:
+            st.altair_chart(heatmap_svm, use_container_width=True)
+        with col3:
+            st.altair_chart(combined_chart_svm, use_container_width=True)
+
+import shap
+explainer = shap.TreeExplainer(iso_forest)
+shap_values = explainer.shap_values(X)
+shap_df = pd.DataFrame(shap_values, columns=X.columns)
+shap_df['is_fraud'] = y
+
+# Crear un gráfico de resumen de SHAP
+shap_long = shap_df.melt(id_vars='is_fraud', var_name='Feature', value_name='SHAP Value')
+
+shap_summary_chart = alt.Chart(shap_long).mark_point().encode(
+    x=alt.X('SHAP Value:Q', title='SHAP Value'),
+    y=alt.Y('Feature:N', title='Feature'),
+    color=alt.Color('is_fraud:N', title='Fraud'),
+    tooltip=['Feature', 'SHAP Value', 'is_fraud']
+).properties(
+    width=800,
+    height=600,
+    title='SHAP Summary Plot'
+)
+
+st.altair_chart(shap_summary_chart, use_container_width=True)
