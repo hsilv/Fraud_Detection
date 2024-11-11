@@ -123,7 +123,7 @@ report_xgb = classification_report(y_test, y_pred_xgb, output_dict=True)
 report_df_xgb = pd.DataFrame(report_xgb).transpose()
 
 # Crear gráficos para la regresión logística
-cm_df_lr = pd.DataFrame(cm_lr, index=['No Fraude', 'Fraude'], columns=['Predicción No Fraude', 'Predicción Fraude']).reset_index().melt(id_vars='index')
+cm_df_lr = pd.DataFrame(cm_lr, index=['No Fraude', 'Fraude'], columns=['No Fraude', 'Fraude']).reset_index().melt(id_vars='index')
 cm_df_lr.columns = ['Real', 'Predicción', 'Valor']
 heatmap_lr = alt.Chart(cm_df_lr).mark_rect().encode(
     x='Predicción:O',
@@ -162,7 +162,7 @@ combined_chart_lr = alt.layer(roc_curve_chart_lr, diagonal_lr).properties(
 )
 
 # Crear gráficos para Random Forest
-cm_df_rf = pd.DataFrame(cm_rf, index=['No Fraude', 'Fraude'], columns=['Predicción No Fraude', 'Predicción Fraude']).reset_index().melt(id_vars='index')
+cm_df_rf = pd.DataFrame(cm_rf, index=['No Fraude', 'Fraude'], columns=['No Fraude', 'Fraude']).reset_index().melt(id_vars='index')
 cm_df_rf.columns = ['Real', 'Predicción', 'Valor']
 heatmap_rf = alt.Chart(cm_df_rf).mark_rect().encode(
     x='Predicción:O',
@@ -205,7 +205,7 @@ feature_importances_df.columns = ['Feature', 'Importance']
 feature_importances_df = feature_importances_df.sort_values(by='Importance', ascending=False)
 
 # Crear gráficos para XGBoost
-cm_df_xgb = pd.DataFrame(cm_xgb, index=['No Fraude', 'Fraude'], columns=['Predicción No Fraude', 'Predicción Fraude']).reset_index().melt(id_vars='index')
+cm_df_xgb = pd.DataFrame(cm_xgb, index=['No Fraude', 'Fraude'], columns=['No Fraude', 'Fraude']).reset_index().melt(id_vars='index')
 cm_df_xgb.columns = ['Real', 'Predicción', 'Valor']
 heatmap_xgb = alt.Chart(cm_df_xgb).mark_rect().encode(
     x='Predicción:O',
