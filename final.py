@@ -15,6 +15,7 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
+from xgboost import XGBClassifier
 from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, roc_curve
 warnings.filterwarnings('ignore')
 
@@ -80,7 +81,9 @@ def train_models(X_train, y_train):
     lr_model.fit(X_train, y_train)
     rf_model = RandomForestClassifier(n_estimators=200, random_state=42)
     rf_model.fit(X_train, y_train)
-    return lr_model, rf_model
+    xgb_model = XGBClassifier(eval_metric="logloss")
+    xgb_model.fit(X_train, y_train)
+    return lr_model, rf_model, xgb_model
 
 # Cargar y preparar los datos
 data = load_data()
@@ -90,7 +93,7 @@ X, y = prepare_data(data)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
 # Entrenar los modelos
-lr_model, rf_model = train_models(X_train, y_train)
+lr_model, rf_model, xgb_model = train_models(X_train, y_train)
 
 # Realizar predicciones y calcular métricas para el modelo de regresión logística
 y_pred_lr = lr_model.predict(X_test)
@@ -109,6 +112,15 @@ roc_auc_rf = roc_auc_score(y_test, y_proba_rf)
 fpr_rf, tpr_rf, thresholds_rf = roc_curve(y_test, y_proba_rf)
 report_rf = classification_report(y_test, y_pred_rf, output_dict=True)
 report_df_rf = pd.DataFrame(report_rf).transpose()
+
+# Realizar preddiciones y calcular métricas para el modelo XGBoost
+y_pred_xgb = xgb_model.predict(X_test)
+y_proba_xgb = xgb_model.predict_proba(X_test)[:, 1]
+cm_xgb = confusion_matrix(y_test, y_pred_xgb)
+roc_auc_xgb = roc_auc_score(y_test, y_proba_xgb)
+fpr_xgb, tpr_xgb, thresholds_xgb = roc_curve(y_test, y_proba_xgb)
+report_xgb = classification_report(y_test, y_pred_xgb, output_dict=True)
+report_df_xgb = pd.DataFrame(report_xgb).transpose()
 
 # Crear gráficos para la regresión logística
 cm_df_lr = pd.DataFrame(cm_lr, index=['No Fraude', 'Fraude'], columns=['Predicción No Fraude', 'Predicción Fraude']).reset_index().melt(id_vars='index')
@@ -192,26 +204,83 @@ feature_importances_df = feature_importances.reset_index()
 feature_importances_df.columns = ['Feature', 'Importance']
 feature_importances_df = feature_importances_df.sort_values(by='Importance', ascending=False)
 
+# Crear gráficos para XGBoost
+cm_df_xgb = pd.DataFrame(cm_xgb, index=['No Fraude', 'Fraude'], columns=['Predicción No Fraude', 'Predicción Fraude']).reset_index().melt(id_vars='index')
+cm_df_xgb.columns = ['Real', 'Predicción', 'Valor']
+heatmap_xgb = alt.Chart(cm_df_xgb).mark_rect().encode(
+    x='Predicción:O',
+    y='Real:O',
+    color=alt.Color('Valor:Q', scale=alt.Scale(scheme='blues', reverse=True)),
+    tooltip=['Real', 'Predicción', 'Valor']
+).properties(
+    width=400,
+    height=300,
+    title='Matriz de Confusión - XGBoost'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+roc_df_xgb = pd.DataFrame({'FPR': fpr_xgb, 'TPR': tpr_xgb, 'Thresholds': thresholds_xgb})
+roc_curve_chart_xgb = alt.Chart(roc_df_xgb).mark_line().encode(
+    x=alt.X('FPR', title='Falsos positivos'),
+    y=alt.Y('TPR', title='Verdaderos positivos'),
+    tooltip=['FPR', 'TPR', 'Thresholds']
+)
+diagonal_xgb = alt.Chart(pd.DataFrame({'FPR': [0, 1], 'TPR': [0, 1]})).mark_line(strokeDash=[5, 5], color='gray').encode(
+    x='FPR',
+    y='TPR'
+)
+combined_chart_xgb = alt.layer(roc_curve_chart_xgb, diagonal_xgb).properties(
+    width=600,
+    height=400,
+    title=f'Curva ROC - XGBoost (AUC = {roc_auc_xgb:.2f})'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+feature_importances_xgb = pd.Series(xgb_model.feature_importances_, index=X_train.columns).sort_values(ascending=False)
+feature_importances_df_xgb = feature_importances_xgb.reset_index()
+feature_importances_df_xgb.columns = ['Feature', 'Importance']
+feature_importances_df_xgb = feature_importances_df_xgb.sort_values(by='Importance', ascending=False)
+
+
 # Sidebar para seleccionar el modelo
-model_choice = st.sidebar.selectbox("Selecciona el modelo", ["Regresión Logística", "Random Forest"])
+model_choice = st.sidebar.selectbox("Selecciona el modelo", ["Regresión Logística", "Random Forest", "XGBoost"])
 
 # Mostrar las gráficas según el modelo seleccionado
 if model_choice == "Regresión Logística":
     st.subheader('Regresión Logística')
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.dataframe(report_df_lr)
-    with col2:
-        st.altair_chart(heatmap_lr, use_container_width=True)
-    with col3:
-        st.altair_chart(combined_chart_lr, use_container_width=True)
+    with st.container():
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.dataframe(report_df_lr)
+        with col2:
+            st.altair_chart(heatmap_lr, use_container_width=True)
+        with col3:
+            st.altair_chart(combined_chart_lr, use_container_width=True)
 elif model_choice == "Random Forest":
     st.subheader('Random Forest')
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.dataframe(report_df_rf)
-    with col2:
-        st.altair_chart(heatmap_rf, use_container_width=True)
-    with col3:
-        st.altair_chart(combined_chart_rf, use_container_width=True)
+    with st.container():
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.dataframe(report_df_rf)
+        with col2:
+            st.altair_chart(heatmap_rf, use_container_width=True)
+        with col3:
+            st.altair_chart(combined_chart_rf, use_container_width=True)
     st.bar_chart(feature_importances_df.set_index('Feature'))
+elif model_choice == "XGBoost":
+    st.subheader('XGBoost')
+    with st.container():
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.dataframe(report_df_xgb)
+        with col2:
+            st.altair_chart(heatmap_xgb, use_container_width=True)
+        with col3:
+            st.altair_chart(combined_chart_xgb, use_container_width=True)
+    st.bar_chart(feature_importances_df_xgb.set_index('Feature'))
