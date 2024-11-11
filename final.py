@@ -12,7 +12,7 @@ from sklearn.utils import resample
 from pycaret.classification import *
 import warnings
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
@@ -86,7 +86,9 @@ def train_models(X_train, y_train):
     xgb_model.fit(X_train, y_train)
     lgbm_model = LGBMClassifier(random_state=42, application="binary", min_data_in_leaf=300, max_depth=900)
     lgbm_model.fit(X_train, y_train)
-    return lr_model, rf_model, xgb_model, lgbm_model
+    extra_trees_model = ExtraTreesClassifier(random_state=42, min_samples_leaf=2, min_samples_split=2, class_weight="balanced")
+    extra_trees_model.fit(X_train, y_train)
+    return lr_model, rf_model, xgb_model, lgbm_model, extra_trees_model
 
 # Cargar y preparar los datos
 data = load_data()
@@ -96,7 +98,7 @@ X, y = prepare_data(data)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
 # Entrenar los modelos
-lr_model, rf_model, xgb_model, lgbm_model = train_models(X_train, y_train)
+lr_model, rf_model, xgb_model, lgbm_model, extra_trees_model = train_models(X_train, y_train)
 
 # Realizar predicciones y calcular métricas para el modelo de regresión logística
 y_pred_lr = lr_model.predict(X_test)
@@ -134,6 +136,16 @@ roc_auc_lgbm = roc_auc_score(y_test, y_proba_lgbm)
 fpr_lgbm, tpr_lgbm, thresholds_lgbm = roc_curve(y_test, y_proba_lgbm)
 report_lgbm = classification_report(y_test, y_pred_lgbm, output_dict=True)
 report_df_lgbm = pd.DataFrame(report_lgbm).transpose()
+
+# Realizar las predicciones y calcular las métricas para el modelo ExtraTrees
+extra_trees_predictions = extra_trees_model.predict(X_test)
+y_proba_extra = extra_trees_model.predict_proba(X_test)[:, 1]
+cm_extra = confusion_matrix(y_test, extra_trees_predictions)
+roc_auc_extra = roc_auc_score(y_test, y_proba_extra)
+fpr_extra, tpr_extra, thresholds_extra = roc_curve(y_test, y_proba_extra)
+report_extra = classification_report(y_test, extra_trees_predictions, output_dict=True)
+report_df_extra = pd.DataFrame(report_extra).transpose()
+
 
 # Crear gráficos para la regresión logística
 cm_df_lr = pd.DataFrame(cm_lr, index=['No Fraude', 'Fraude'], columns=['No Fraude', 'Fraude']).reset_index().melt(id_vars='index')
@@ -304,8 +316,52 @@ feature_importances_df_lgbm.columns = ['Feature', 'Importance']
 feature_importances_df_lgbm = feature_importances_df_lgbm.sort_values(by='Importance', ascending=False)
 
 
+# Crear gráficos para ExtraTrees
+cm_df_extra = pd.DataFrame(cm_extra, index=['No Fraude', 'Fraude'], columns=['No Fraude', 'Fraude']).reset_index().melt(id_vars='index')
+cm_df_extra.columns = ['Real', 'Predicción', 'Valor']
+heatmap_extra = alt.Chart(cm_df_extra).mark_rect().encode(
+    x='Predicción:O',
+    y='Real:O',
+    color=alt.Color('Valor:Q', scale=alt.Scale(scheme='blues', reverse=True)),
+    tooltip=['Real', 'Predicción', 'Valor']
+).properties(
+    width=400,
+    height=300,
+    title='Matriz de Confusión - ExtraTrees'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+roc_df_extra = pd.DataFrame({'FPR': fpr_extra, 'TPR': tpr_extra, 'Thresholds': thresholds_extra})
+roc_curve_chart_extra = alt.Chart(roc_df_extra).mark_line().encode(
+    x=alt.X('FPR', title='Falsos positivos'),
+    y=alt.Y('TPR', title='Verdaderos positivos'),
+    tooltip=['FPR', 'TPR', 'Thresholds']
+)
+diagonal_extra = alt.Chart(pd.DataFrame({'FPR': [0, 1], 'TPR': [0, 1]})).mark_line(strokeDash=[5, 5], color='gray').encode(
+    x='FPR',
+    y='TPR'
+)
+combined_chart_extra = alt.layer(roc_curve_chart_extra, diagonal_extra).properties(
+    width=600,
+    height=400,
+    title=f'Curva ROC - ExtraTrees (AUC = {roc_auc_extra:.2f})'
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+).configure_title(
+    fontSize=16
+)
+feature_importances_extra = pd.Series(extra_trees_model.feature_importances_, index=X_train.columns).sort_values(ascending=False)
+feature_importances_df_extra = feature_importances_extra.reset_index()
+feature_importances_df_extra.columns = ['Feature', 'Importance']
+feature_importances_df_extra = feature_importances_df_extra.sort_values(by='Importance', ascending=False)
+
+
 # Sidebar para seleccionar el modelo
-model_choice = st.sidebar.selectbox("Selecciona el modelo", ["Regresión Logística", "Random Forest", "XGBoost", "LightGBM"])
+model_choice = st.sidebar.selectbox("Selecciona el modelo", ["Regresión Logística", "Random Forest", "XGBoost", "LightGBM", "ExtraTrees"])
 
 # Mostrar las gráficas según el modelo seleccionado
 if model_choice == "Regresión Logística":
@@ -351,3 +407,14 @@ elif model_choice == "LightGBM":
         with col3:
             st.altair_chart(combined_chart_lgbm, use_container_width=True)
     st.bar_chart(feature_importances_df_lgbm.set_index('Feature'))
+elif model_choice == "ExtraTrees":
+    st.subheader('ExtraTrees')
+    with st.container():
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.dataframe(report_df_extra)
+        with col2:
+            st.altair_chart(heatmap_extra, use_container_width=True)
+        with col3:
+            st.altair_chart(combined_chart_extra, use_container_width=True)
+    st.bar_chart(feature_importances_df_extra.set_index('Feature'))
